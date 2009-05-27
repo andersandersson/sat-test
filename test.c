@@ -20,6 +20,7 @@ typedef struct Color {
 typedef struct Vector {
   double x;
   double y;
+  double magnitude;
 } Vector;
 
 typedef struct Projection {
@@ -36,8 +37,7 @@ typedef struct VectorGroup {
 typedef struct Object {
   Color color;
   VectorGroup shape;
-  VectorGroup normals;
-  Projection self_projection;
+  VectorGroup normals;  
 } Object;
 
 
@@ -103,18 +103,40 @@ void calculate_normals(Object* o) {
 
 Vector calculate_result(Projection* p1, Projection* p2) {
   Vector v;
-
+  double mag = 0;
+  Projection* temp;
   
-  v.x = 30;
-  v.y = 30;
+  v.x = -p1->direction.x;
+  v.y = -p1->direction.y;
+
+  if(p1->start > p2->start) {
+    v.x *= -1.0;
+    v.y *= -1.0;
+    temp = p1;
+    p1 = p2;
+    p2 = temp;
+  }
+  
+  if(p1->end < p2->start) {
+    mag = 0;
+  } else if(p1->end < p2->end) {
+    mag = p1->end - p2->start;
+  } else {
+    mag = p1->end - p2->start;
+  }
+
+  v.x *= mag;
+  v.y *= mag;
+  v.magnitude = mag;
 
   return v;
 }
 
-void calculate_collision(Object* o1, Object* o2) {
+Vector calculate_collision(Object* o1, Object* o2) {
   Projection* o1_projections;
   Projection* o2_projections;
   Vector v;
+  Vector min_v;
   int num_axis = o1->normals.size + o2->normals.size;
   int i;
   int c = 0;
@@ -133,17 +155,24 @@ void calculate_collision(Object* o1, Object* o2) {
     c++;
   }
 
+  min_v = calculate_result(&o1_projections[0], &o2_projections[0]);
   for(i=0; i<num_axis; i++) {    
-    draw_projection(&o1_projections[i], 0);
-    draw_projection(&o2_projections[i], 1);
+    //draw_projection(&o1_projections[i], 0);
+    //draw_projection(&o2_projections[i], 1);
 
     v = calculate_result(&o1_projections[i], &o2_projections[i]);
 
-    draw_vector(o1, v);
+    if(v.magnitude < min_v.magnitude) {
+      min_v = v;
+    }
   }
+
+  //draw_vector(o1, min_v);
 
   free(o1_projections);
   free(o2_projections);
+
+  return min_v;
 }
 
 void draw_vector(Object* o, Vector v) {
@@ -204,9 +233,11 @@ Object create_object(void) {
   Object o;
   int i;
   int r = 80;
-  int size=5;
+  int size;
   double x, y;
 
+
+  size = 3 + rand() % 6;
   o.color.r = 128;
   o.color.g = 200;
   o.color.b = 12;
@@ -246,16 +277,18 @@ int main( void )
   double dx, dy, ox, oy, a;
   int i,j;
   int running = GL_TRUE;
-  int num_obj = 2;
+  int num_obj = 3;
   int r_lock = 0, tab_lock = 0;
   int curr_index = 0;
-  Object o[2], *curr_o;
+  Object o[3], *curr_o;
   Projection proj;
+  Vector v;
 
   srand((unsigned)time(NULL));
 
-  o[0] = create_object();
-  o[1] = create_object();
+  for(i=0; i<num_obj; i++) {
+    o[i] = create_object();
+  }
 
   glfwInit();
   
@@ -275,16 +308,20 @@ int main( void )
 
     curr_o = &o[0];
 
+    curr_o->color.b = 255;
+
     while( running )
     {
       
       glClear( GL_COLOR_BUFFER_BIT );
 
-      //draw_axis(curr_o);
-
-      calculate_collision(&o[0], &o[1]);
-
       for(i=0; i<num_obj; i++) {
+	for(j=0; j<num_obj; j++) {
+	  if(i != j && &o[i] != curr_o) {
+	    v = calculate_collision(&o[i], &o[j]);      
+	    move_object(&o[i], v.x, v.y);	  
+	  }
+	}
 	draw_object(&o[i], 0);
       }
       
@@ -362,8 +399,10 @@ int main( void )
       }
      
       if(glfwGetKey(GLFW_KEY_TAB) == GLFW_PRESS && 0 == tab_lock) {
+	curr_o->color.b = 12;
 	curr_index = (++curr_index) % num_obj;
 	curr_o = &o[curr_index];
+	curr_o->color.b = 255;
 	tab_lock = 1;
       }
       if(glfwGetKey(GLFW_KEY_TAB) == GLFW_RELEASE && 1 == tab_lock) {
